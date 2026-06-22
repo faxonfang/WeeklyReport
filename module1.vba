@@ -13,6 +13,7 @@ Private Const WL_90 As Double = 0.4
 Private Const WL_120 As Double = 0.3
 
 Private Const DEFAULT_ETD_DAYS As Long = 30
+Private Const EARLY_DELIVERY_BUFFER As Long = 7
 Private Const SUGGEST_MONTHS As Double = 3
 
 Sub 開始缺貨分析(Optional showMsg As Boolean = True)
@@ -33,6 +34,9 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
     Dim needOrder As String
     Dim suggestQty As Double
 
+    Dim needEarlyDelivery As String
+    Dim daysToAdvance As Long
+
     Dim etdText As String, etdDisplay As String
     Dim etdDate As Date
     Dim etdDays As Long, minEtdDays As Long
@@ -46,6 +50,7 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
     Dim mm As Long, dd As Long
     Dim isLowStock As Boolean
     Dim hasNoSales As Boolean
+    Dim writeStartCol As Long
 
     Call EnablePerformanceMode
 
@@ -56,13 +61,14 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
     Set summaryWs = Worksheets.Add
     summaryWs.Name = "缺貨總覽"
 
-    summaryWs.Range("A1:S1").Value = Array( _
+    summaryWs.Range("A1:U1").Value = Array( _
         "工廠", "品號", "品名", "總庫存", _
         "30天銷售", "60天銷售", "90天銷售", "120天銷售", _
         "加權月銷", "可售天數", "60天需求", _
         "在途PO總量", "60天後預估庫存", _
         "是否建議下單", "建議下單量", _
-        "PO號碼", "PO數量", "ETD時間", "風險等級")
+        "PO號碼", "PO數量", "ETD時間", "風險等級", _
+        "是否需提早到貨", "建議提前天數")
 
     summaryWs.Columns("P:R").NumberFormat = "@"
     outRow = 2
@@ -74,7 +80,19 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
         And Left(ws.Name, 5) = "採購週報表" Then
 
             lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-            lastCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
+
+            ' 找分析起始欄：若已有「加權月銷」則覆寫，否則接在最後
+            writeStartCol = 找分析起始欄(ws)
+            lastCol = writeStartCol - 1
+
+            ' 寫入分析欄標題（行2）
+            ws.Cells(2, writeStartCol).Value = "加權月銷"
+            ws.Cells(2, writeStartCol + 1).Value = "可售天數"
+            ws.Cells(2, writeStartCol + 2).Value = "風險等級"
+            ws.Cells(2, writeStartCol + 3).Value = "是否建議下單"
+            ws.Cells(2, writeStartCol + 4).Value = "建議下單量"
+            ws.Cells(2, writeStartCol + 5).Value = "是否需提早到貨"
+            ws.Cells(2, writeStartCol + 6).Value = "建議提前天數"
 
             For i = 4 To lastRow
 
@@ -191,7 +209,7 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
 
                             If hasNoSales Then
 
-                                ' 有庫存但無任何銷售紀錄 → 標記提示，不計算天數
+                                ' 有庫存但無任何銷售紀錄
                                 dailySales = 0
                                 stockDays = 0
                                 demand60 = 0
@@ -199,6 +217,8 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                                 needOrder = "否"
                                 suggestQty = 0
                                 riskLevel = "無銷售紀錄"
+                                needEarlyDelivery = "-"
+                                daysToAdvance = 0
 
                             Else
 
@@ -226,8 +246,25 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                                     riskLevel = "正常"
                                 End If
 
+                                ' 提早到貨：有在途PO但庫存撐不到 ETD + 7 天
+                                If incomingPO > 0 Then
+                                    If stockDays < minEtdDays + EARLY_DELIVERY_BUFFER Then
+                                        needEarlyDelivery = "需提早到貨"
+                                        daysToAdvance = Round(minEtdDays + EARLY_DELIVERY_BUFFER - stockDays, 0)
+                                        If daysToAdvance < 1 Then daysToAdvance = 1
+                                    Else
+                                        needEarlyDelivery = "否"
+                                        daysToAdvance = 0
+                                    End If
+                                Else
+                                    ' 無在途PO，提早到貨不適用（缺貨問題由建議下單處理）
+                                    needEarlyDelivery = "-"
+                                    daysToAdvance = 0
+                                End If
+
                             End If
 
+                            ' ── 寫入缺貨總覽 ──────────────────────────────
                             summaryWs.Cells(outRow, 1).Value = ws.Name
                             summaryWs.Cells(outRow, 2).Value = ws.Cells(i, "A").Value
                             summaryWs.Cells(outRow, 3).Value = ws.Cells(i, "B").Value
@@ -251,7 +288,14 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                             summaryWs.Cells(outRow, 17).Value = "'" & poQtyList
                             summaryWs.Cells(outRow, 18).Value = "'" & etdList
                             summaryWs.Cells(outRow, 19).Value = riskLevel
+                            summaryWs.Cells(outRow, 20).Value = needEarlyDelivery
+                            If needEarlyDelivery = "需提早到貨" Then
+                                summaryWs.Cells(outRow, 21).Value = daysToAdvance
+                            Else
+                                summaryWs.Cells(outRow, 21).Value = ""
+                            End If
 
+                            ' 列底色（依風險等級）
                             Select Case riskLevel
                                 Case "高風險"
                                     summaryWs.Rows(outRow).Interior.Color = RGB(255, 199, 206)
@@ -264,6 +308,8 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                                 Case "正常"
                                     If needOrder = "建議下單" Then
                                         summaryWs.Rows(outRow).Interior.Color = RGB(221, 235, 247)
+                                    ElseIf needEarlyDelivery = "需提早到貨" Then
+                                        summaryWs.Rows(outRow).Interior.Color = RGB(228, 208, 248)
                                     Else
                                         summaryWs.Rows(outRow).Interior.ColorIndex = xlNone
                                     End If
@@ -271,7 +317,52 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                                     summaryWs.Rows(outRow).Interior.ColorIndex = xlNone
                             End Select
 
+                            ' 有風險且同時需提早到貨 → 額外標記提早到貨格
+                            If needEarlyDelivery = "需提早到貨" And riskLevel <> "正常" Then
+                                summaryWs.Cells(outRow, 20).Interior.Color = RGB(228, 208, 248)
+                            End If
+
                             outRow = outRow + 1
+
+                            ' ── 寫回原分頁 ─────────────────────────────────
+                            ws.Cells(i, writeStartCol).Value = Round(weightedSales, 1)
+                            If hasNoSales Then
+                                ws.Cells(i, writeStartCol + 1).Value = ""
+                            Else
+                                ws.Cells(i, writeStartCol + 1).Value = Round(stockDays, 1)
+                            End If
+                            ws.Cells(i, writeStartCol + 2).Value = riskLevel
+                            ws.Cells(i, writeStartCol + 3).Value = needOrder
+                            ws.Cells(i, writeStartCol + 4).Value = suggestQty
+                            ws.Cells(i, writeStartCol + 5).Value = needEarlyDelivery
+                            If needEarlyDelivery = "需提早到貨" Then
+                                ws.Cells(i, writeStartCol + 6).Value = daysToAdvance
+                            Else
+                                ws.Cells(i, writeStartCol + 6).Value = ""
+                            End If
+
+                            ' 原分頁：風險等級格標色
+                            Select Case riskLevel
+                                Case "高風險"
+                                    ws.Cells(i, writeStartCol + 2).Interior.Color = RGB(255, 199, 206)
+                                Case "中高風險"
+                                    ws.Cells(i, writeStartCol + 2).Interior.Color = RGB(255, 235, 156)
+                                Case "注意補貨"
+                                    ws.Cells(i, writeStartCol + 2).Interior.Color = RGB(255, 242, 204)
+                                Case "無銷售紀錄"
+                                    ws.Cells(i, writeStartCol + 2).Interior.Color = RGB(217, 217, 217)
+                                Case "正常"
+                                    ws.Cells(i, writeStartCol + 2).Interior.Color = RGB(198, 239, 206)
+                                Case Else
+                                    ws.Cells(i, writeStartCol + 2).Interior.ColorIndex = xlNone
+                            End Select
+
+                            ' 原分頁：需提早到貨格標紫色
+                            If needEarlyDelivery = "需提早到貨" Then
+                                ws.Cells(i, writeStartCol + 5).Interior.Color = RGB(228, 208, 248)
+                            Else
+                                ws.Cells(i, writeStartCol + 5).Interior.ColorIndex = xlNone
+                            End If
 
                         End If
 
@@ -294,6 +385,21 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
     End If
 
 End Sub
+
+
+' 找到分析結果起始欄：若已有「加權月銷」標題則覆寫，否則接在最後
+Private Function 找分析起始欄(ws As Worksheet) As Long
+    Dim c As Long
+    Dim lastCol As Long
+    lastCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
+    For c = 1 To lastCol
+        If ws.Cells(2, c).Value = "加權月銷" Then
+            找分析起始欄 = c
+            Exit Function
+        End If
+    Next c
+    找分析起始欄 = lastCol + 1
+End Function
 
 
 Public Sub EnablePerformanceMode()
