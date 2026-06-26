@@ -382,10 +382,13 @@ End Sub
 
 
 ' 找到分析結果起始欄：若已有「加權月銷」標題則覆寫，否則接在最後
+' 同時比較第二列與第三列，取較大值，避免分析欄插入 PO 資料中間
 Private Function 找分析起始欄(ws As Worksheet) As Long
     Dim c As Long
-    Dim lastCol As Long
-    lastCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
+    Dim lastCol2 As Long, lastCol3 As Long, lastCol As Long
+    lastCol2 = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
+    lastCol3 = ws.Cells(3, ws.Columns.Count).End(xlToLeft).Column
+    lastCol = IIf(lastCol2 > lastCol3, lastCol2, lastCol3)
     For c = 1 To lastCol
         If ws.Cells(2, c).Text = "加權月銷" Then
             找分析起始欄 = c
