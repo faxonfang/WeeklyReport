@@ -393,7 +393,7 @@ Private Function 找分析起始欄(ws As Worksheet) As Long
     Dim lastCol As Long
     lastCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
     For c = 1 To lastCol
-        If ws.Cells(2, c).Value = "加權月銷" Then
+        If ws.Cells(2, c).Text = "加權月銷" Then
             找分析起始欄 = c
             Exit Function
         End If
