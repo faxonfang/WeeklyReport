@@ -37,6 +37,9 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
     Dim needEarlyDelivery As String
     Dim daysToAdvance As Long
 
+    Dim salesTrend As String
+    Dim salesChange As Double
+
     Dim etdText As String, etdDisplay As String
     Dim etdDate As Date
     Dim etdDays As Long, minEtdDays As Long
@@ -61,14 +64,14 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
     Set summaryWs = Worksheets.Add
     summaryWs.Name = "缺貨總覽"
 
-    summaryWs.Range("A1:U1").Value = Array( _
+    summaryWs.Range("A1:V1").Value = Array( _
         "工廠", "品號", "品名", "總庫存", _
         "30天銷售", "60天銷售", "90天銷售", "120天銷售", _
         "加權月銷", "可售天數", "60天需求", _
         "在途PO總量", "60天後預估庫存", _
         "是否建議下單", "建議下單量", _
         "PO號碼", "PO數量", "ETD時間", "風險等級", _
-        "是否需提早到貨", "建議提前天數")
+        "是否需提早到貨", "建議提前天數", "銷售趨勢")
 
     summaryWs.Columns("P:R").NumberFormat = "@"
     outRow = 2
@@ -93,6 +96,7 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
             ws.Cells(2, writeStartCol + 4).Value = "建議下單量"
             ws.Cells(2, writeStartCol + 5).Value = "是否需提早到貨"
             ws.Cells(2, writeStartCol + 6).Value = "建議提前天數"
+            ws.Cells(2, writeStartCol + 7).Value = "銷售趨勢"
 
             For i = 4 To lastRow
 
@@ -113,6 +117,28 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                         If real60 < 0 Then real60 = 0
                         If real90 < 0 Then real90 = 0
                         If real120 < 0 Then real120 = 0
+
+                        ' 銷售趨勢：比較近30天 vs 前30-60天
+                        If real30 = 0 And real60 = 0 Then
+                            salesTrend = "近60天無銷售"
+                        ElseIf real30 = 0 Then
+                            salesTrend = "近30天無銷售"
+                        ElseIf real60 = 0 Then
+                            salesTrend = "新增銷售"
+                        Else
+                            salesChange = (real30 - real60) / real60 * 100
+                            If salesChange >= 50 Then
+                                salesTrend = "大幅上升"
+                            ElseIf salesChange >= 20 Then
+                                salesTrend = "上升"
+                            ElseIf salesChange <= -50 Then
+                                salesTrend = "大幅下降"
+                            ElseIf salesChange <= -20 Then
+                                salesTrend = "下降"
+                            Else
+                                salesTrend = "持平"
+                            End If
+                        End If
 
                         isLowStock = (totalStock <= real30 / 2)
 
@@ -318,6 +344,25 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                                 summaryWs.Cells(outRow, 20).Interior.Color = RGB(228, 208, 248)
                             End If
 
+                            ' 銷售趨勢欄
+                            summaryWs.Cells(outRow, 22).Value = salesTrend
+                            Select Case salesTrend
+                                Case "近30天無銷售", "近60天無銷售"
+                                    summaryWs.Cells(outRow, 22).Interior.Color = RGB(255, 199, 206)
+                                Case "大幅下降"
+                                    summaryWs.Cells(outRow, 22).Interior.Color = RGB(255, 235, 156)
+                                Case "下降"
+                                    summaryWs.Cells(outRow, 22).Interior.Color = RGB(255, 242, 204)
+                                Case "大幅上升"
+                                    summaryWs.Cells(outRow, 22).Interior.Color = RGB(198, 239, 206)
+                                Case "上升"
+                                    summaryWs.Cells(outRow, 22).Interior.Color = RGB(226, 239, 218)
+                                Case "新增銷售"
+                                    summaryWs.Cells(outRow, 22).Interior.Color = RGB(221, 235, 247)
+                                Case Else
+                                    summaryWs.Cells(outRow, 22).Interior.ColorIndex = xlNone
+                            End Select
+
                             outRow = outRow + 1
 
                             ' ── 寫回原分頁 ─────────────────────────────────
@@ -359,6 +404,25 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                             Else
                                 ws.Cells(i, writeStartCol + 5).Interior.ColorIndex = xlNone
                             End If
+
+                            ' 原分頁：銷售趨勢
+                            ws.Cells(i, writeStartCol + 7).Value = salesTrend
+                            Select Case salesTrend
+                                Case "近30天無銷售", "近60天無銷售"
+                                    ws.Cells(i, writeStartCol + 7).Interior.Color = RGB(255, 199, 206)
+                                Case "大幅下降"
+                                    ws.Cells(i, writeStartCol + 7).Interior.Color = RGB(255, 235, 156)
+                                Case "下降"
+                                    ws.Cells(i, writeStartCol + 7).Interior.Color = RGB(255, 242, 204)
+                                Case "大幅上升"
+                                    ws.Cells(i, writeStartCol + 7).Interior.Color = RGB(198, 239, 206)
+                                Case "上升"
+                                    ws.Cells(i, writeStartCol + 7).Interior.Color = RGB(226, 239, 218)
+                                Case "新增銷售"
+                                    ws.Cells(i, writeStartCol + 7).Interior.Color = RGB(221, 235, 247)
+                                Case Else
+                                    ws.Cells(i, writeStartCol + 7).Interior.ColorIndex = xlNone
+                            End Select
 
                         End If
 
