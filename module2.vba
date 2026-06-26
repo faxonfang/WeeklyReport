@@ -11,6 +11,7 @@ Sub 匯入週報並分析()
     Dim tempWs As Worksheet
     Dim lastRow As Long
     Dim lastCol As Long
+    Dim r As Long
 
     Set targetWb = ThisWorkbook
 
@@ -47,6 +48,19 @@ Sub 匯入週報並分析()
             If Not ws.Cells.Find("*", , , , xlByRows, xlPrevious) Is Nothing Then
                 lastRow = ws.Cells.Find("*", , , , xlByRows, xlPrevious).Row
                 lastCol = ws.Cells.Find("*", , , , xlByColumns, xlPrevious).Column
+
+                ' 複製欄寬與儲存格格式（字型、顏色、框線、數字格式）
+                ws.Range(ws.Cells(1, 1), ws.Cells(lastRow, lastCol)).Copy
+                newWs.Range("A1").PasteSpecial xlPasteColumnWidths
+                newWs.Range("A1").PasteSpecial xlPasteFormats
+                Application.CutCopyMode = False
+
+                ' 複製列高
+                For r = 1 To lastRow
+                    newWs.Rows(r).RowHeight = ws.Rows(r).RowHeight
+                Next r
+
+                ' 複製純值（不帶公式，避免跨檔參照錯誤）
                 newWs.Range(newWs.Cells(1, 1), newWs.Cells(lastRow, lastCol)).Value = _
                     ws.Range(ws.Cells(1, 1), ws.Cells(lastRow, lastCol)).Value
             End If

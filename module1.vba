@@ -98,10 +98,6 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
 
                 If Trim(ws.Cells(i, "A").Value) <> "" Then
 
-                    ' AA欄非零 = 停產商品，跳過不分析
-                    If Trim(ws.Cells(i, "AA").Value) = "" _
-                    Or ws.Cells(i, "AA").Value = 0 Then
-
                         totalStock = 取得最小上華庫存(ws, ws.Cells(i, "A").Value, lastRow)
 
                         sales30 = Val(ws.Cells(i, "N").Value)
@@ -365,8 +361,6 @@ Sub 開始缺貨分析(Optional showMsg As Boolean = True)
                             End If
 
                         End If
-
-                    End If
 
                 End If
 
